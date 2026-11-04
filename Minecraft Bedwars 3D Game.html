@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, orientation=landscape">
+    <title>Minecraft Bedwars 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #0f172a;
+        }
+
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 18px;
+            height: 18px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.85);
+            box-shadow: 0 0 2px rgba(0,0,0,0.8);
+        }
+        #crosshair::before { top: 8px; left: 0; width: 18px; height: 2px; }
+        #crosshair::after { top: 0; left: 8px; width: 2px; height: 18px; }
+
+        /* Mobile Controls Styling */
+        .dpad-btn {
+            background: rgba(20, 20, 20, 0.75);
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            color: white;
+            font-size: 22px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            box-shadow: inset 0 0 5px rgba(255,255,255,0.3), 0 4px 6px rgba(0,0,0,0.5);
+            touch-action: manipulation;
+        }
+        .dpad-btn:active {
+            background: rgba(234, 179, 8, 0.8);
+            border-color: #ffffff;
+            transform: scale(0.92);
+        }
+
+        .action-btn {
+            background: rgba(30, 41, 59, 0.85);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            touch-action: manipulation;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.6);
+        }
+        .action-btn:active {
+            transform: scale(0.92);
+            filter: brightness(1.2);
+        }
+
+        .pickup-popup {
+            position: absolute;
+            font-weight: 900;
+            font-size: 20px;
+            pointer-events: none;
+            animation: floatUp 1.2s forwards ease-out;
+            text-shadow: 2px 2px 0px #000, -1px -1px 0 #000;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-45px) scale(1.25); }
+        }
+
+        /* Landscape orientation alert for mobile */
+        @media screen and (orientation: portrait) {
+            #portrait-warning {
+                display: flex !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white select-none">
+
+    <!-- Portrait Orientation Prompt -->
+    <div id="portrait-warning" class="hidden fixed inset-0 z-50 bg-slate-950 flex-col items-center justify-center p-6 text-center">
+        <div class="text-6xl mb-4 animate-bounce">📱🔄</div>
+        <h2 class="text-2xl font-black text-yellow-400 mb-2">EKRANNI BURING!</h2>
+        <p class="text-gray-300 text-sm max-w-xs">O'yin oson va qulay bo'lishi uchun telefoningizni **gorizontal (yonbosh)** holatga o'tkazing!</p>
+    </div>
+
+    <div id="game-container" class="w-full h-full relative">
+        <div id="crosshair"></div>
+
+        <!-- HUD Panel -->
+        <div class="absolute top-2 left-2 z-10 bg-black/80 p-2.5 rounded-xl border-2 border-slate-600 backdrop-blur-md min-w-[150px] shadow-xl">
+            <div class="text-sm font-black text-yellow-400 border-b border-slate-700 pb-1 flex justify-between items-center">
+                <span>BEDWARS 3D</span>
+            </div>
+            <div class="flex items-center gap-1.5 mt-1 text-xs">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block shadow"></span>
+                <span>Qizil Bed: <b id="red-bed-status" class="text-green-400">BOR</b></span>
+            </div>
+            <div class="flex items-center gap-1.5 mt-0.5 text-xs">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block shadow"></span>
+                <span>Ko'k Bed: <b id="blue-bed-status" class="text-green-400">BOR</b></span>
+            </div>
+            <div class="mt-1.5 pt-1 border-t border-slate-700 text-xs space-y-0.5 font-bold">
+                <div class="flex justify-between"><span>Temir:</span> <b id="res-iron" class="text-slate-200">0</b></div>
+                <div class="flex justify-between"><span>Oltin:</span> <b id="res-gold" class="text-yellow-400">0</b></div>
+            </div>
+        </div>
+
+        <!-- 5-Slot Hotbar -->
+        <div class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-black/85 p-1 rounded-xl border-2 border-slate-500 flex gap-1.5 backdrop-blur-md">
+            <div id="slot-0" onclick="selectSlot(0)" class="w-11 h-11 sm:w-13 sm:h-13 border-2 border-yellow-400 bg-slate-800/90 rounded-lg flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition">
+                <span class="text-[9px] text-gray-400 absolute top-0.5 left-1 font-mono">1</span>
+                <span id="slot-0-icon" class="text-lg sm:text-2xl">🗡️</span>
+            </div>
+            <div id="slot-1" onclick="selectSlot(1)" class="w-11 h-11 sm:w-13 sm:h-13 border-2 border-slate-600 bg-slate-800/90 rounded-lg flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition">
+                <span class="text-[9px] text-gray-400 absolute top-0.5 left-1 font-mono">2</span>
+                <span id="slot-1-icon" class="text-lg sm:text-2xl">🧱</span>
+                <span id="slot-1-count" class="text-[10px] text-white absolute bottom-0.5 right-1 font-bold">0</span>
+            </div>
+            <div id="slot-2" onclick="selectSlot(2)" class="w-11 h-11 sm:w-13 sm:h-13 border-2 border-slate-600 bg-slate-800/90 rounded-lg flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition">
+                <span class="text-[9px] text-gray-400 absolute top-0.5 left-1 font-mono">3</span>
+                <span id="slot-2-icon" class="text-lg sm:text-2xl">⛏️</span>
+                <span id="slot-2-count" class="text-[10px] text-white absolute bottom-0.5 right-1 font-bold">1</span>
+            </div>
+            <div id="slot-3" onclick="selectSlot(3)" class="w-11 h-11 sm:w-13 sm:h-13 border-2 border-slate-600 bg-slate-800/90 rounded-lg flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition">
+                <span class="text-[9px] text-gray-400 absolute top-0.5 left-1 font-mono">4</span>
+                <span id="slot-3-icon" class="text-lg sm:text-2xl">🍎</span>
+                <span id="slot-3-count" class="text-[10px] text-white absolute bottom-0.5 right-1 font-bold">0</span>
+            </div>
+            <div id="slot-4" onclick="selectSlot(4)" class="w-11 h-11 sm:w-13 sm:h-13 border-2 border-slate-600 bg-slate-800/90 rounded-lg flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition">
+                <span class="text-[9px] text-gray-400 absolute top-0.5 left-1 font-mono">5</span>
+                <span id="slot-4-icon" class="text-lg sm:text-2xl">⚡</span>
+                <span id="slot-4-count" class="text-[10px] text-white absolute bottom-0.5 right-1 font-bold">0</span>
+            </div>
+        </div>
+
+        <!-- Shop Button -->
+        <button id="open-shop-btn" class="absolute top-2 right-2 z-10 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-black py-2 px-3 rounded-xl border-2 border-yellow-300 shadow-xl transition flex items-center gap-1.5 text-xs">
+            <span class="text-base">🛒</span> <span>DO'KON [E]</span>
+        </button>
+
+        <!-- Loading Screen Screen -->
+        <div id="loading-screen" class="absolute inset-0 bg-slate-950 z-40 flex flex-col items-center justify-center p-4">
+            <div class="text-center p-6 max-w-sm w-full">
+                <div class="text-5xl mb-3 animate-pulse">⛏️</div>
+                <h2 class="text-2xl font-black text-yellow-400 mb-1 tracking-wider">YUKLANMOQDA...</h2>
+                <p class="text-gray-400 text-xs mb-4">Minecraft voksel dunyosi va bloklar tayyorlanmoqda...</p>
+                <div class="w-full bg-slate-800 rounded-full h-4 p-0.5 border border-slate-700">
+                    <div id="loading-bar" class="bg-yellow-400 h-full rounded-full transition-all duration-300 w-0"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="click-to-play" class="hidden absolute inset-0 bg-black/80 z-30 flex flex-col items-center justify-center cursor-pointer p-4">
+            <div class="text-center p-5 bg-slate-900 border-4 border-yellow-500 rounded-2xl max-w-md shadow-2xl">
+                <h1 class="text-3xl font-extrabold text-yellow-400 mb-1 tracking-wider">BEDWARS 3D</h1>
+                <p class="text-gray-300 text-xs mb-3">Haqiqiy Minecraft grafikasi va oson blok qo'yish tizimi bilan!</p>
+
+                <div class="text-left text-[11px] text-gray-300 space-y-1 mb-4 bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono">
+                    <div><b>W, A, S, D / Tugmalar:</b> Yurgizish</div>
+                    <div><b>RMB / 🧱 Tugma:</b> Qaramasdan avto-blok qo'yish</div>
+                    <div><b>LMB / ⚔️ Tugma:</b> Urib va bloklarni buzish</div>
+                </div>
+
+                <button class="w-full bg-green-600 hover:bg-green-500 text-white text-base font-black py-2.5 px-5 rounded-xl border-2 border-green-300 shadow-lg">
+                    O'YINNI BOSHLASH
+                </button>
+            </div>
+        </div>
+
+        <!-- Explicit Visual Touch Controls (DPAD + Action Buttons) -->
+        <div id="mobile-ui" class="hidden">
+            <!-- D-PAD for Walking -->
+            <div class="absolute bottom-4 left-4 z-20 w-36 h-36 grid grid-cols-3 grid-rows-3 gap-1">
+                <div></div>
+                <button id="btn-up" class="dpad-btn col-start-2 row-start-1">▲</button>
+                <div></div>
+                <button id="btn-left" class="dpad-btn col-start-1 row-start-2">◀</button>
+                <div class="bg-slate-800/50 rounded-md border border-slate-700"></div>
+                <button id="btn-right" class="dpad-btn col-start-3 row-start-2">▶</button>
+                <div></div>
+                <button id="btn-down" class="dpad-btn col-start-2 row-start-3">▼</button>
+                <div></div>
+            </div>
+
+            <!-- Action Buttons Right Side -->
+            <div class="absolute bottom-4 right-4 z-20 flex gap-2">
+                <button id="btn-attack" class="action-btn w-16 h-16 bg-red-600/90 border-red-300">
+                    <span class="text-2xl">⚔️</span>
+                    <span class="text-[9px]">URISH</span>
+                </button>
+                <button id="btn-place" class="action-btn w-16 h-16 bg-blue-600/90 border-blue-300">
+                    <span class="text-2xl">🧱</span>
+                    <span class="text-[9px]">BLOK</span>
+                </button>
+                <button id="btn-jump" class="action-btn w-16 h-16 bg-green-600/90 border-green-300">
+                    <span class="text-2xl">⬆️</span>
+                    <span class="text-[9px]">SAKRASH</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Shop Window -->
+        <div id="shop-modal" class="hidden absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-3">
+            <div class="bg-slate-900 border-4 border-yellow-500 rounded-2xl p-4 w-full max-w-sm shadow-2xl">
+                <div class="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
+                    <h2 class="text-lg font-bold text-yellow-400 flex items-center gap-1.5">🛒 BEDWARS DO'KONI</h2>
+                    <button id="close-shop-btn" class="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
+                </div>
+
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    <div class="flex items-center justify-between p-2 bg-slate-800 rounded-xl border border-slate-700">
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">🧱</span>
+                            <div>
+                                <div class="font-bold text-xs">Jun Blok (x16)</div>
+                                <div class="text-[10px] text-gray-400">Ko'prik qurish uchun</div>
+                            </div>
+                        </div>
+                        <button onclick="buyItem('wool')" class="bg-yellow-600 hover:bg-yellow-500 active:bg-yellow-700 text-white font-bold py-1 px-2.5 rounded-lg border border-yellow-300 text-xs shadow">
+                            4 Temir
+                        </button>
+                    </div>
+
+                    <div class="flex items-center justify-between p-2 bg-slate-800 rounded-xl border border-slate-700">
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">🗡️</span>
+                            <div>
+                                <div class="font-bold text-xs">Temir Qilich</div>
+                                <div class="text-[10px] text-gray-400">+Hujum kuchi</div>
+                            </div>
+                        </div>
+                        <button onclick="buyItem('sword')" class="bg-yellow-600 hover:bg-yellow-500 active:bg-yellow-700 text-white font-bold py-1 px-2.5 rounded-lg border border-yellow-300 text-xs shadow">
+                            10 Temir
+                        </button>
+                    </div>
+
+                    <div class="flex items-center justify-between p-2 bg-slate-800 rounded-xl border border-slate-700">
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">🍎</span>
+                            <div>
+                                <div class="font-bold text-xs">Oltin Olma</div>
+                                <div class="text-[10px] text-gray-400">Jonni tiklaydi</div>
+                            </div>
+                        </div>
+                        <button onclick="buyItem('apple')" class="bg-yellow-600 hover:bg-yellow-500 active:bg-yellow-700 text-white font-bold py-1 px-2.5 rounded-lg border border-yellow-300 text-xs shadow">
+                            3 Oltin
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Modal -->
+        <div id="game-over-modal" class="hidden absolute inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+            <div class="bg-slate-900 border-4 border-yellow-500 rounded-2xl p-6 max-w-xs text-center shadow-2xl">
+                <h2 id="game-over-title" class="text-2xl font-black text-red-500 mb-1">MAG'LUBIYAT!</h2>
+                <p id="game-over-msg" class="text-gray-300 text-xs mb-5">To'shagingiz buzildi!</p>
+                <button onclick="location.reload()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2.5 px-4 rounded-xl border-2 border-green-300 text-sm shadow-lg">
+                    QAYTA BOSHLASH
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Pixelated Minecraft Canvas Texture Generators ---
+        function createPixelTexture(type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 16; canvas.height = 16;
+            const ctx = canvas.getContext('2d');
+
+            function fillRandom(colors) {
+                for(let x=0; x<16; x++) {
+                    for(let y=0; y<16; y++) {
+                        ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                        ctx.fillRect(x, y, 1, 1);
+                    }
+                }
+            }
+
+            if (type === 'grass_top') {
+                fillRandom(['#4a7c2c', '#548733', '#3f6b24', '#5c9438']);
+            } else if (type === 'dirt') {
+                fillRandom(['#866043', '#755238', '#66462f', '#916a4b']);
+            } else if (type === 'cobble') {
+                fillRandom(['#6d6d6d', '#525252', '#7e7e7e', '#454545']);
+            } else if (type === 'red_wool') {
+                fillRandom(['#b02e26', '#99221b', '#bd372f']);
+            } else if (type === 'blue_wool') {
+                fillRandom(['#3c44aa', '#2d3388', '#4750bd']);
+            } else if (type === 'iron_spawner') {
+                fillRandom(['#e2e8f0', '#cbd5e1', '#94a3b8']);
+            } else if (type === 'gold_spawner') {
+                fillRandom(['#facc15', '#eab308', '#ca8a04']);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.NearestFilter;
+            return texture;
+        }
+
+        // --- Core Variables ---
+        let scene, camera, renderer;
+        let blocks = {};
+        const BLOCK_SIZE = 1;
+
+        let mats = {};
+
+        const player = {
+            pos: new THREE.Vector3(0, 11, 18),
+            velocity: new THREE.Vector3(),
+            rotation: new THREE.Euler(0, 0, 0, 'YXZ'),
+            onGround: false,
+            selectedSlot: 0,
+            resources: { iron: 0, gold: 0 },
+            inventory: { wool: 0, swordLevel: 1, apples: 0 },
+            health: 100
+        };
+
+        const gameStatus = { redBed: true, blueBed: true, gameOver: false };
+        const bot = { mesh: null, pos: new THREE.Vector3(0, 11, -18), velocity: new THREE.Vector3(), health: 100, alive: true };
+        const generators = [
+            { pos: new THREE.Vector3(0, 9.6, 18), type: 'iron', timer: 0, interval: 40, mesh: null },
+            { pos: new THREE.Vector3(1.5, 9.6, 18), type: 'gold', timer: 0, interval: 140, mesh: null },
+            { pos: new THREE.Vector3(0, 9.6, -18), type: 'iron', timer: 0, interval: 40, mesh: null }
+        ];
+
+        const keys = {};
+        const dpadInput = { up: false, down: false, left: false, right: false };
+        let isTouchDevice = false;
+
+        let playerArmGroup, playerSwordMesh, playerBlockHandMesh;
+        let armSwingAngle = 0, isSwinging = false;
+
+        window.onload = function() {
+            isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            if (isTouchDevice) {
+                document.getElementById('mobile-ui').classList.remove('hidden');
+                setupTouchControls();
+            }
+
+            // Simulated loading screen
+            let progress = 0;
+            const bar = document.getElementById('loading-bar');
+            const interval = setInterval(() => {
+                progress += 20;
+                bar.style.width = progress + '%';
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    document.getElementById('loading-screen').classList.add('hidden');
+                    document.getElementById('click-to-play').classList.remove('hidden');
+                    initGame();
+                }
+            }, 100);
+        };
+
+        function initGame() {
+            initMaterials();
+            initThree();
+            buildWorld();
+            createPlayerHand();
+            createBot();
+            setupEvents();
+            setupGeneratorsVisuals();
+            animate();
+        }
+
+        function initMaterials() {
+            const grassTex = createPixelTexture('grass_top');
+            const dirtTex = createPixelTexture('dirt');
+            const cobbleTex = createPixelTexture('cobble');
+            const redTex = createPixelTexture('red_wool');
+            const blueTex = createPixelTexture('blue_wool');
+            const ironTex = createPixelTexture('iron_spawner');
+            const goldTex = createPixelTexture('gold_spawner');
+
+            mats = {
+                grassSide: new THREE.MeshLambertMaterial({ map: dirtTex }),
+                grassTop: new THREE.MeshLambertMaterial({ map: grassTex }),
+                dirt: new THREE.MeshLambertMaterial({ map: dirtTex }),
+                stone: new THREE.MeshLambertMaterial({ map: cobbleTex }),
+                redWool: new THREE.MeshLambertMaterial({ map: redTex }),
+                blueWool: new THREE.MeshLambertMaterial({ map: blueTex }),
+                ironBlock: new THREE.MeshLambertMaterial({ map: ironTex }),
+                goldBlock: new THREE.MeshLambertMaterial({ map: goldTex })
+            };
+        }
+
+        function initThree() {
+            const container = document.getElementById('game-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x7ec0ee);
+            scene.fog = new THREE.FogExp2(0x7ec0ee, 0.015);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.rotation.order = 'YXZ';
+
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambient);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(20, 40, 20);
+            sun.castShadow = true;
+            scene.add(sun);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function addBlock(x, y, z, material, isBed = false, bedTeam = null) {
+            const key = `${Math.round(x)},${Math.round(y)},${Math.round(z)}`;
+            if (blocks[key]) return;
+
+            const geo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            const mesh = new THREE.Mesh(geo, material);
+            mesh.position.set(x, y, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            if (isBed) mesh.userData = { isBed: true, team: bedTeam };
+
+            scene.add(mesh);
+            blocks[key] = mesh;
+            return mesh;
+        }
+
+        function buildWorld() {
+            buildIsland(0, 8, 18, mats.redWool);
+            addBlock(0, 9, 21, mats.redWool, true, 'red');
+
+            buildIsland(0, 8, -18, mats.blueWool);
+            addBlock(0, 9, -21, mats.blueWool, true, 'blue');
+
+            addBlock(0, 8.5, 18, mats.ironBlock);
+            addBlock(1.5, 8.5, 18, mats.goldBlock);
+            addBlock(0, 8.5, -18, mats.ironBlock);
+        }
+
+        function buildIsland(cx, cy, cz, teamWool) {
+            for (let x = -3; x <= 3; x++) {
+                for (let z = -3; z <= 3; z++) {
+                    addBlock(cx + x, cy, cz + z, (Math.abs(x)===3 || Math.abs(z)===3) ? teamWool : mats.grassTop);
+                    addBlock(cx + x, cy - 1, cz + z, mats.dirt);
+                }
+            }
+        }
+
+        function setupGeneratorsVisuals() {
+            generators.forEach(gen => {
+                const geo = new THREE.BoxGeometry(0.35, 0.35, 0.35);
+                const itemMat = gen.type === 'iron' ? mats.ironBlock : mats.goldBlock;
+                const mesh = new THREE.Mesh(geo, itemMat);
+                mesh.position.copy(gen.pos);
+                scene.add(mesh);
+                gen.mesh = mesh;
+            });
+        }
+
+        function createPlayerHand() {
+            playerArmGroup = new THREE.Group();
+
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), new THREE.MeshLambertMaterial({ color: 0xebac8b }));
+            arm.position.set(0, -0.2, 0);
+            playerArmGroup.add(arm);
+
+            const swordGroup = new THREE.Group();
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.65, 0.02), mats.ironBlock);
+            blade.position.y = 0.35;
+            swordGroup.add(blade);
+
+            swordGroup.position.set(0, -0.1, -0.2);
+            swordGroup.rotation.x = Math.PI / 4;
+            playerArmGroup.add(swordGroup);
+            playerSwordMesh = swordGroup;
+
+            playerBlockHandMesh = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), mats.redWool);
+            playerBlockHandMesh.position.set(0, -0.05, -0.2);
+            playerBlockHandMesh.visible = false;
+            playerArmGroup.add(playerBlockHandMesh);
+
+            playerArmGroup.position.set(0.3, -0.25, -0.4);
+            camera.add(playerArmGroup);
+            scene.add(camera);
+        }
+
+        function createBot() {
+            const group = new THREE.Group();
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), new THREE.MeshLambertMaterial({ color: 0xebac8b }));
+            head.position.y = 1.2;
+            group.add(head);
+
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.7, 0.22), mats.blueWool);
+            body.position.y = 0.6;
+            group.add(body);
+
+            bot.mesh = group;
+            bot.mesh.position.copy(bot.pos);
+            scene.add(bot.mesh);
+        }
+
+        function selectSlot(index) {
+            player.selectedSlot = index;
+            for (let i = 0; i < 5; i++) {
+                const el = document.getElementById(`slot-${i}`);
+                if (i === index) {
+                    el.classList.add('border-yellow-400');
+                    el.classList.remove('border-slate-600');
+                } else {
+                    el.classList.remove('border-yellow-400');
+                    el.classList.add('border-slate-600');
+                }
+            }
+
+            if (index === 1) {
+                playerSwordMesh.visible = false;
+                playerBlockHandMesh.visible = true;
+            } else {
+                playerSwordMesh.visible = true;
+                playerBlockHandMesh.visible = false;
+            }
+        }
+
+        function setupEvents() {
+            document.getElementById('click-to-play').addEventListener('click', () => {
+                document.getElementById('click-to-play').classList.add('hidden');
+                if (!isTouchDevice) document.body.requestPointerLock();
+            });
+
+            window.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                if (e.code === 'KeyE') toggleShop();
+                if (['Digit1','Digit2','Digit3','Digit4','Digit5'].includes(e.code)) {
+                    selectSlot(parseInt(e.code.replace('Digit','')) - 1);
+                }
+            });
+            window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+            window.addEventListener('mousemove', (e) => {
+                if (document.pointerLockElement === document.body) {
+                    player.rotation.y -= e.movementX * 0.0025;
+                    player.rotation.x -= e.movementY * 0.0025;
+                    player.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.rotation.x));
+                }
+            });
+
+            window.addEventListener('mousedown', (e) => {
+                if (document.pointerLockElement !== document.body) return;
+                if (e.button === 0) performPrimaryAction();
+                else if (e.button === 2) performSecondaryAction();
+            });
+
+            window.addEventListener('contextmenu', e => e.preventDefault());
+            document.getElementById('open-shop-btn').addEventListener('click', toggleShop);
+            document.getElementById('close-shop-btn').addEventListener('click', toggleShop);
+        }
+
+        function setupTouchControls() {
+            const bindBtn = (id, keyName) => {
+                const el = document.getElementById(id);
+                el.addEventListener('touchstart', (e) => { e.preventDefault(); dpadInput[keyName] = true; });
+                el.addEventListener('touchend', (e) => { e.preventDefault(); dpadInput[keyName] = false; });
+            };
+
+            bindBtn('btn-up', 'up');
+            bindBtn('btn-down', 'down');
+            bindBtn('btn-left', 'left');
+            bindBtn('btn-right', 'right');
+
+            let lookId = null, lastX, lastY;
+            window.addEventListener('touchstart', (e) => {
+                for (let touch of e.changedTouches) {
+                    if (touch.clientX > window.innerWidth / 2 && lookId === null) {
+                        lookId = touch.identifier; lastX = touch.clientX; lastY = touch.clientY;
+                    }
+                }
+            });
+
+            window.addEventListener('touchmove', (e) => {
+                for (let touch of e.changedTouches) {
+                    if (touch.identifier === lookId) {
+                        player.rotation.y -= (touch.clientX - lastX) * 0.006;
+                        player.rotation.x -= (touch.clientY - lastY) * 0.006;
+                        player.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.rotation.x));
+                        lastX = touch.clientX; lastY = touch.clientY;
+                    }
+                }
+            });
+            window.addEventListener('touchend', (e) => {
+                for (let touch of e.changedTouches) {
+                    if (touch.identifier === lookId) lookId = null;
+                }
+            });
+
+            document.getElementById('btn-jump').addEventListener('touchstart', (e) => {
+                e.preventDefault(); if (player.onGround) player.velocity.y = 0.22;
+            });
+            document.getElementById('btn-attack').addEventListener('touchstart', (e) => {
+                e.preventDefault(); performPrimaryAction();
+            });
+            document.getElementById('btn-place').addEventListener('touchstart', (e) => {
+                e.preventDefault(); performSecondaryAction();
+            });
+        }
+
+        function performPrimaryAction() {
+            triggerSwing();
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+            if (bot.alive && bot.mesh) {
+                const botHits = raycaster.intersectObject(bot.mesh, true);
+                if (botHits.length > 0 && botHits[0].distance < 3.5) {
+                    bot.health -= 35;
+                    if (bot.health <= 0) killBot();
+                    return;
+                }
+            }
+
+            const intersects = raycaster.intersectObjects(Object.values(blocks));
+            if (intersects.length > 0 && intersects[0].distance < 4.5) {
+                const target = intersects[0].object;
+                if (target.userData.isBed && target.userData.team === 'blue') {
+                    gameStatus.blueBed = false;
+                    document.getElementById('blue-bed-status').innerText = "BUZILDI";
+                    document.getElementById('blue-bed-status').className = "text-red-500 font-bold";
+                }
+                scene.remove(target);
+                for (let k in blocks) {
+                    if (blocks[k] === target) delete blocks[k];
+                }
+            }
+        }
+
+        // --- Intuitive Smart Block Placement ---
+        function performSecondaryAction() {
+            if (player.selectedSlot === 1 && player.inventory.wool > 0) {
+                const raycaster = new THREE.Raycaster();
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(Object.values(blocks));
+
+                let bx, by, bz;
+
+                if (intersects.length > 0 && intersects[0].distance < 5.0) {
+                    // Normal face placement
+                    const hit = intersects[0];
+                    const pos = hit.point.clone().add(hit.face.normal.clone().multiplyScalar(0.5));
+                    bx = Math.round(pos.x); by = Math.round(pos.y); bz = Math.round(pos.z);
+                } else {
+                    // Easy Auto-Placement directly in front / bridging mode!
+                    const lookDir = new THREE.Vector3();
+                    camera.getWorldDirection(lookDir);
+                    const placePos = player.pos.clone().addScaledVector(lookDir, 2.0);
+                    bx = Math.round(placePos.x);
+                    by = Math.round(player.pos.y - 1.2); // Just under feet
+                    bz = Math.round(placePos.z);
+                }
+
+                addBlock(bx, by, bz, mats.redWool);
+                player.inventory.wool--;
+                updateUI();
+            } else if (player.selectedSlot === 3 && player.inventory.apples > 0) {
+                player.inventory.apples--;
+                player.health = Math.min(100, player.health + 50);
+                showPickupPopup("+50 Jon", "#4ade80");
+                updateUI();
+            }
+        }
+
+        function triggerSwing() { isSwinging = true; }
+
+        function toggleShop() {
+            document.getElementById('shop-modal').classList.toggle('hidden');
+        }
+
+        function buyItem(type) {
+            if (type === 'wool' && player.resources.iron >= 4) {
+                player.resources.iron -= 4; player.inventory.wool += 16; selectSlot(1);
+            } else if (type === 'sword' && player.resources.iron >= 10) {
+                player.resources.iron -= 10; player.inventory.swordLevel = 2; selectSlot(0);
+            } else if (type === 'apple' && player.resources.gold >= 3) {
+                player.resources.gold -= 3; player.inventory.apples += 1; selectSlot(3);
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('res-iron').innerText = player.resources.iron;
+            document.getElementById('res-gold').innerText = player.resources.gold;
+            document.getElementById('slot-1-count').innerText = player.inventory.wool;
+            document.getElementById('slot-3-count').innerText = player.inventory.apples;
+        }
+
+        function showPickupPopup(text, color = "#ffffff") {
+            const el = document.createElement('div');
+            el.className = 'pickup-popup';
+            el.innerText = text; el.style.color = color;
+            el.style.left = (window.innerWidth / 2 + (Math.random() * 40 - 20)) + 'px';
+            el.style.top = (window.innerHeight / 2 - 20) + 'px';
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 1200);
+        }
+
+        function killBot() {
+            bot.alive = false; scene.remove(bot.mesh);
+            if (!gameStatus.blueBed) showEndScreen(true, "G'alaba! Barcha dushmanlar yo'q qilindi!");
+            else setTimeout(() => { bot.alive = true; bot.health = 100; bot.pos.set(0, 11, -18); scene.add(bot.mesh); }, 5000);
+        }
+
+        function playerRespawnOrLose() {
+            if (gameStatus.redBed) {
+                player.pos.set(0, 11, 18); player.velocity.set(0, 0, 0); player.health = 100;
+            } else showEndScreen(false, "To'shagingiz buzilgan edi! Yutqazdingiz.");
+        }
+
+        function showEndScreen(win, msg) {
+            gameStatus.gameOver = true;
+            const modal = document.getElementById('game-over-modal');
+            const title = document.getElementById('game-over-title');
+            document.getElementById('game-over-msg').innerText = msg;
+            title.innerText = win ? "G'ALABA!" : "MAG'LUBIYAT!";
+            title.className = win ? "text-2xl font-black text-green-400 mb-1" : "text-2xl font-black text-red-500 mb-1";
+            modal.classList.remove('hidden');
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (gameStatus.gameOver) return;
+
+            generators.forEach(gen => {
+                if (gen.mesh) gen.mesh.rotation.y += 0.03;
+                gen.timer++;
+                if (gen.timer >= gen.interval) {
+                    gen.timer = 0;
+                    if (player.pos.distanceTo(gen.pos) < 2.5) {
+                        if (gen.type === 'iron') { player.resources.iron += 1; showPickupPopup("+1 Temir", "#e2e8f0"); }
+                        else { player.resources.gold += 1; showPickupPopup("+1 Oltin", "#facc15"); }
+                        updateUI();
+                    }
+                }
+            });
+
+            // Player Movement Engine
+            const moveSpeed = 0.11;
+            const moveVec = new THREE.Vector3();
+
+            if (keys['KeyW'] || dpadInput.up) moveVec.z -= 1;
+            if (keys['KeyS'] || dpadInput.down) moveVec.z += 1;
+            if (keys['KeyA'] || dpadInput.left) moveVec.x -= 1;
+            if (keys['KeyD'] || dpadInput.right) moveVec.x += 1;
+
+            moveVec.normalize();
+            moveVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+
+            player.velocity.x = moveVec.x * moveSpeed;
+            player.velocity.z = moveVec.z * moveSpeed;
+            player.velocity.y -= 0.012;
+
+            if (keys['Space'] && player.onGround) {
+                player.velocity.y = 0.21; player.onGround = false;
+            }
+
+            player.pos.add(player.velocity);
+
+            // Simple Voxel Collision
+            player.onGround = false;
+            for (let k in blocks) {
+                const b = blocks[k];
+                if (Math.abs(player.pos.x - b.position.x) < 0.7 && Math.abs(player.pos.z - b.position.z) < 0.7) {
+                    if (player.pos.y >= b.position.y + 0.8 && player.pos.y <= b.position.y + 1.5) {
+                        player.pos.y = b.position.y + 1.4; player.velocity.y = 0; player.onGround = true;
+                    }
+                }
+            }
+
+            if (player.pos.y < -8) playerRespawnOrLose();
+
+            camera.position.copy(player.pos);
+            camera.rotation.x = player.rotation.x;
+            camera.rotation.y = player.rotation.y;
+
+            if (isSwinging) {
+                armSwingAngle += 0.25;
+                playerArmGroup.rotation.x = Math.sin(armSwingAngle) * 0.8;
+                if (armSwingAngle >= Math.PI) { armSwingAngle = 0; isSwinging = false; playerArmGroup.rotation.x = 0; }
+            }
+
+            if (bot.alive) {
+                bot.velocity.y -= 0.01;
+                bot.pos.add(bot.velocity);
+                if (bot.pos.y <= 11) { bot.pos.y = 11; bot.velocity.y = 0; }
+
+                const dist = bot.pos.distanceTo(player.pos);
+                if (dist < 14 && dist > 1.2) {
+                    const dir = new THREE.Vector3().subVectors(player.pos, bot.pos).setY(0).normalize();
+                    bot.pos.addScaledVector(dir, 0.04);
+                    bot.mesh.lookAt(player.pos.x, bot.pos.y, player.pos.z);
+                }
+                if (dist <= 1.4) {
+                    player.health -= 0.4;
+                    if (player.health <= 0) playerRespawnOrLose();
+                }
+                if (bot.pos.y < -5) killBot();
+                bot.mesh.position.copy(bot.pos);
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
